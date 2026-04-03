@@ -143,7 +143,6 @@ def main() -> None:
     parser.add_argument("--no-humanize", action="store_true")
     args = parser.parse_args()
 
-    flags = {"headed": args.headed, "no_humanize": args.no_humanize}
     cmd_list = args.command
 
     if not cmd_list or cmd_list[0] == "status":
@@ -155,8 +154,15 @@ def main() -> None:
     else:
         port = ensure_daemon(headless=not args.headed)
         if args.no_humanize:
-            httpx.post(f"http://127.0.0.1:{port}/config", json={"humanize": False})
-        method, path, body = build_request(cmd_list, flags)
+            try:
+                httpx.post(
+                    f"http://127.0.0.1:{port}/config",
+                    json={"humanize": False},
+                    timeout=5,
+                )
+            except httpx.RequestError:
+                pass  # non-critical, proceed anyway
+        method, path, body = build_request(cmd_list, {})
 
     try:
         with httpx.Client() as client:
@@ -165,7 +171,7 @@ def main() -> None:
             else:
                 r = client.post(f"http://127.0.0.1:{port}{path}", json=body)
         data = r.json()
-    except Exception as e:
+    except (httpx.RequestError, httpx.HTTPStatusError) as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
