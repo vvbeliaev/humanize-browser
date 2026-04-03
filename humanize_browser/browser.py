@@ -14,4 +14,7 @@ async def launch_browser(headless: bool = True) -> AsyncIterator[Page]:
     async with AsyncCamoufox(headless=headless, geoip=True) as browser:
         page = await browser.new_page()
         await _stealth.apply_stealth_async(page)
-        yield page
+        try:
+            yield page
+        finally:
+            await page.close()
