@@ -18,6 +18,7 @@ PID_FILE = Path.home() / ".humanize-browser" / "daemon.pid"
 
 # Module-level Camoufox handle kept alive for the daemon lifetime
 _camoufox_ctx: Any = None
+_record_session: Any = None
 
 
 @dataclass
@@ -192,7 +193,8 @@ async def type_text(body: dict):
 
 
 @app.post("/screenshot")
-async def screenshot(body: dict = {}):
+async def screenshot(body: dict | None = None):
+    body = body or {}
     if state.page is None:
         return err("No page open.")
     path = body.get("path", "screenshot.png")
@@ -247,9 +249,6 @@ async def record_start(body: dict):
             _rec({type:'keyup', key:e.key, t:Date.now()}));
     """)
     return ok({"recording": str(path)})
-
-
-_record_session: Any = None
 
 
 @app.post("/record/stop")
