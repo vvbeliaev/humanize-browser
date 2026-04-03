@@ -165,7 +165,7 @@ def main() -> None:
         method, path, body = build_request(cmd_list, {})
 
     try:
-        with httpx.Client() as client:
+        with httpx.Client(timeout=60.0) as client:
             if method == "GET":
                 r = client.get(f"http://127.0.0.1:{port}{path}")
             else:

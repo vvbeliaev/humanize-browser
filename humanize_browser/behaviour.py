@@ -25,6 +25,12 @@ class RecordSession:
     def close(self) -> None:
         self._file.close()
 
+    def __enter__(self) -> "RecordSession":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
 
 # ── AGGREGATE ─────────────────────────────────────────────────────────────────
 
@@ -96,7 +102,7 @@ def aggregate(recording_path: Path, name: str) -> dict[str, Any]:
 
     profile: dict[str, Any] = {
         "name": name,
-        "recorded_at": datetime.datetime.utcnow().isoformat() + "Z",
+        "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
         "mouse_speed": {"mu": round(speed_mu, 4), "sigma": round(speed_sigma, 4)},
         "key_delays": key_delay_models,
         "overshoot_prob": 0.15,
