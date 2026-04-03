@@ -45,7 +45,7 @@ def ensure_daemon(headless: bool = True) -> int:
 
     port = _free_port()
     subprocess.Popen(
-        [sys.executable, "-m", "humanize_browser._daemon_entry", str(port)],
+        [sys.executable, "-m", "humanize_browser._daemon_entry", str(port), "0" if not headless else "1"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

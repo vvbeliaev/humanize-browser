@@ -192,6 +192,23 @@ async def type_text(body: dict):
     return ok()
 
 
+@app.post("/fill")
+async def fill(body: dict):
+    selector = body.get("selector", "")
+    text = body.get("text", "")
+    locator = resolve(selector)
+    await locator.fill(text)
+    return ok()
+
+
+@app.post("/hover")
+async def hover(body: dict):
+    selector = body.get("selector", "")
+    locator = resolve(selector)
+    await locator.hover()
+    return ok()
+
+
 @app.post("/screenshot")
 async def screenshot(body: dict | None = None):
     body = body or {}
