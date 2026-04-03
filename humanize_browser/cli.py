@@ -153,15 +153,14 @@ def main() -> None:
         method, path, body = "GET", "/status", {}
     else:
         port = ensure_daemon(headless=not args.headed)
-        if args.no_humanize:
-            try:
-                httpx.post(
-                    f"http://127.0.0.1:{port}/config",
-                    json={"humanize": False},
-                    timeout=5,
-                )
-            except httpx.RequestError:
-                pass  # non-critical, proceed anyway
+        try:
+            httpx.post(
+                f"http://127.0.0.1:{port}/config",
+                json={"humanize": not args.no_humanize},
+                timeout=5,
+            )
+        except httpx.RequestError:
+            pass  # non-critical, proceed anyway
         method, path, body = build_request(cmd_list, {})
 
     try:

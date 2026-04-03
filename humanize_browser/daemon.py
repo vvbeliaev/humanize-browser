@@ -70,14 +70,10 @@ async def open_url(body: dict):
         return err("url required")
 
     if state.page is None:
-        from camoufox.async_api import AsyncCamoufox
-        from playwright_stealth import Stealth
+        from humanize_browser.browser import setup_browser
 
         headless = body.get("headless", state.headless)
-        _camoufox_ctx = AsyncCamoufox(headless=headless, geoip=True)
-        browser = await _camoufox_ctx.__aenter__()
-        page = await browser.new_page()
-        await Stealth().apply_stealth_async(page)
+        _camoufox_ctx, page = await setup_browser(headless=headless)
         state.page = page
 
     state.refs = {}
