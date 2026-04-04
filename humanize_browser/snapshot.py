@@ -2,9 +2,23 @@ from typing import Any
 
 # Roles worth surfacing to the agent — skip purely structural containers
 _ACTIONABLE_ROLES = {
-    "button", "link", "textbox", "checkbox", "radio", "combobox",
-    "listbox", "option", "menuitem", "tab", "heading", "img",
-    "searchbox", "spinbutton", "slider", "switch", "treeitem",
+    "button",
+    "link",
+    "textbox",
+    "checkbox",
+    "radio",
+    "combobox",
+    "listbox",
+    "option",
+    "menuitem",
+    "tab",
+    "heading",
+    "img",
+    "searchbox",
+    "spinbutton",
+    "slider",
+    "switch",
+    "treeitem",
 }
 
 

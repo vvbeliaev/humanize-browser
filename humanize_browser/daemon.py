@@ -28,6 +28,8 @@ class AppState:
     headless: bool = True
     humanize: bool = True
     profile: dict[str, Any] | None = None
+    profile_dir: Path | None = None
+    pid_file: Path = field(default_factory=lambda: PID_FILE)
 
 
 state = AppState()
@@ -73,7 +75,9 @@ async def open_url(body: dict):
         from humanize_browser.browser import setup_browser
 
         headless = body.get("headless", state.headless)
-        _camoufox_ctx, page = await setup_browser(headless=headless)
+        _camoufox_ctx, page = await setup_browser(
+            headless=headless, profile_dir=state.profile_dir
+        )
         state.page = page
 
     state.refs = {}
@@ -81,51 +85,13 @@ async def open_url(body: dict):
     return ok({"url": url})
 
 
-_AX_SNAPSHOT_JS = """() => {
-    const tagToRole = {
-        a: 'link', button: 'button',
-        h1: 'heading', h2: 'heading', h3: 'heading',
-        h4: 'heading', h5: 'heading', h6: 'heading',
-        select: 'combobox', textarea: 'textbox', img: 'img'
-    };
-    const getRole = (el) => {
-        const ariaRole = el.getAttribute('role');
-        if (ariaRole) return ariaRole;
-        const tag = el.tagName.toLowerCase();
-        if (tag === 'input') {
-            const type = (el.getAttribute('type') || 'text').toLowerCase();
-            if (type === 'checkbox') return 'checkbox';
-            if (type === 'radio') return 'radio';
-            if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
-            return 'textbox';
-        }
-        return tagToRole[tag] || null;
-    };
-    const getName = (el) => {
-        return el.getAttribute('aria-label') || el.getAttribute('alt') ||
-            el.getAttribute('title') || el.textContent.trim().slice(0, 80) || '';
-    };
-    const nodes = [];
-    document.querySelectorAll(
-        'a,button,h1,h2,h3,h4,h5,h6,input,select,textarea,img,[role]'
-    ).forEach(el => {
-        const role = getRole(el);
-        const name = getName(el);
-        if (role && name) nodes.push({role, name});
-    });
-    return nodes;
-}"""
-
-
 @app.post("/snapshot")
 async def snapshot():
     if state.page is None:
         return err("No page open.")
-    raw_nodes: list[dict] = await state.page.evaluate(_AX_SNAPSHOT_JS)
-    if not raw_nodes:
+    tree = await state.page.accessibility.snapshot()
+    if not tree:
         return ok({"text": "", "refs": {}})
-    # Convert flat node list to the nested dict format walk_tree expects
-    tree = {"role": "root", "name": "", "children": raw_nodes}
     lines, ref_map = walk_tree(tree)
     state.refs = ref_map
     text = format_snapshot(lines)
@@ -248,7 +214,8 @@ async def record_start(body: dict):
             _record_session.write_event(data)
 
     await state.page.expose_function("__humanize_record", _on_event)
-    await state.page.add_init_script("""
+    await state.page.add_init_script(
+        """
         const _rec = d => window.__humanize_record && window.__humanize_record(d);
         window.addEventListener('mousemove', e =>
             _rec({type:'mousemove', x:e.clientX, y:e.clientY, t:Date.now()}), {passive:true});
@@ -260,7 +227,8 @@ async def record_start(body: dict):
             _rec({type:'keydown', key:e.key, t:Date.now()}));
         window.addEventListener('keyup', e =>
             _rec({type:'keyup', key:e.key, t:Date.now()}));
-    """)
+    """
+    )
     return ok({"recording": str(path)})
 
 
@@ -297,10 +265,58 @@ async def profile_use(body: dict):
     return ok({"profile": name})
 
 
+@app.post("/scroll")
+async def scroll(body: dict):
+    if state.page is None:
+        return err("No page open.")
+    direction = body.get("direction", "down")
+    amount = int(body.get("amount", 300))
+    selector = body.get("selector")
+
+    delta_x = amount if direction == "right" else -amount if direction == "left" else 0
+    delta_y = amount if direction == "down" else -amount if direction == "up" else 0
+
+    if selector:
+        locator = resolve(selector)
+        await locator.evaluate(f"el => el.scrollBy({delta_x}, {delta_y})")
+    else:
+        await state.page.mouse.wheel(delta_x, delta_y)
+    return ok()
+
+
+@app.post("/eval")
+async def eval_js(body: dict):
+    if state.page is None:
+        return err("No page open.")
+    expression = body.get("expression", "")
+    if not expression:
+        return err("expression required")
+    result = await state.page.evaluate(expression)
+    if isinstance(result, (dict, list)):
+        value = json.dumps(result)
+    elif result is None:
+        value = ""
+    else:
+        value = str(result)
+    return ok({"value": value})
+
+
+@app.post("/select")
+async def select(body: dict):
+    selector = body.get("selector", "")
+    value = body.get("value", "")
+    locator = resolve(selector)
+    await locator.select_option(value)
+    return ok()
+
+
 @app.post("/config")
 async def config(body: dict):
     if "humanize" in body:
         state.humanize = bool(body["humanize"])
+    if "profile_dir" in body:
+        raw = body["profile_dir"]
+        state.profile_dir = Path(raw) if raw else None
     return ok({"humanize": state.humanize})
 
 
@@ -313,14 +329,16 @@ async def shutdown():
     if _camoufox_ctx:
         await _camoufox_ctx.__aexit__(None, None, None)
         _camoufox_ctx = None
-    PID_FILE.unlink(missing_ok=True)
+    state.pid_file.unlink(missing_ok=True)
     asyncio.get_event_loop().call_later(0.1, lambda: os._exit(0))
     return ok()
 
 
-def run_daemon(port: int, headless: bool = True) -> None:
+def run_daemon(port: int, headless: bool = True, pid_file: Path | None = None) -> None:
+    resolved_pid_file = pid_file or PID_FILE
     PROFILES_DIR.mkdir(parents=True, exist_ok=True)
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
+    resolved_pid_file.parent.mkdir(parents=True, exist_ok=True)
     state.headless = headless
-    PID_FILE.write_text(json.dumps({"port": port, "pid": os.getpid()}))
+    state.pid_file = resolved_pid_file
+    resolved_pid_file.write_text(json.dumps({"port": port, "pid": os.getpid()}))
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="error")
