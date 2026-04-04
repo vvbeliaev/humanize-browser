@@ -242,9 +242,15 @@ def main() -> None:
                 r = client.get(f"http://127.0.0.1:{port}{path}")
             else:
                 r = client.post(f"http://127.0.0.1:{port}{path}", json=body)
+        if not r.content:
+            print(f"Error: daemon returned empty response (HTTP {r.status_code})", file=sys.stderr)
+            sys.exit(1)
         data = r.json()
     except (httpx.RequestError, httpx.HTTPStatusError) as e:
         print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: failed to parse daemon response: {e}", file=sys.stderr)
         sys.exit(1)
 
     output = format_output(data, args.json)

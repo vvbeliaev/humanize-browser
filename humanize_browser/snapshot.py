@@ -49,7 +49,19 @@ def walk_tree(
             ref = f"@e{counter[0]}"
             counter[0] += 1
             ref_map[ref] = (role, name, idx)
-            lines.append(f'{role} "{name}" {ref}')
+
+            state_parts = []
+            st = n.get("state") or {}
+            if st.get("checked"):
+                state_parts.append("checked")
+            if st.get("selected"):
+                state_parts.append("selected")
+            if st.get("disabled"):
+                state_parts.append("disabled")
+            if "expanded" in st:
+                state_parts.append("expanded" if st["expanded"] else "collapsed")
+            state_str = f" [{', '.join(state_parts)}]" if state_parts else ""
+            lines.append(f'{role} "{name}"{state_str} {ref}')
 
         for child in n.get("children") or []:
             _visit(child)

@@ -85,13 +85,66 @@ async def open_url(body: dict):
     return ok({"url": url})
 
 
+_AX_SNAPSHOT_JS = """() => {
+    const tagToRole = {
+        a: 'link', button: 'button',
+        h1: 'heading', h2: 'heading', h3: 'heading',
+        h4: 'heading', h5: 'heading', h6: 'heading',
+        select: 'combobox', textarea: 'textbox', img: 'img',
+    };
+    const getRole = (el) => {
+        const aria = el.getAttribute('role');
+        if (aria) return aria;
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'input') {
+            const t = (el.getAttribute('type') || 'text').toLowerCase();
+            if (t === 'checkbox') return 'checkbox';
+            if (t === 'radio') return 'radio';
+            if (t === 'submit' || t === 'button' || t === 'reset') return 'button';
+            return 'textbox';
+        }
+        return tagToRole[tag] || null;
+    };
+    const getName = (el) => (
+        el.getAttribute('aria-label') ||
+        el.getAttribute('alt') ||
+        el.getAttribute('title') ||
+        el.textContent.trim().slice(0, 80) || ''
+    );
+    const getState = (el) => {
+        const s = {};
+        if (el.disabled) s.disabled = true;
+        if (el.checked !== undefined && el.checked) s.checked = true;
+        if (el.getAttribute('aria-checked') === 'true') s.checked = true;
+        if (el.getAttribute('aria-selected') === 'true') s.selected = true;
+        if (el.getAttribute('aria-expanded') !== null)
+            s.expanded = el.getAttribute('aria-expanded') === 'true';
+        return Object.keys(s).length ? s : null;
+    };
+    const nodes = [];
+    document.querySelectorAll(
+        'a,button,h1,h2,h3,h4,h5,h6,input,select,textarea,img,[role]'
+    ).forEach(el => {
+        const role = getRole(el);
+        const name = getName(el);
+        if (!role || !name) return;
+        const node = {role, name};
+        const st = getState(el);
+        if (st) node.state = st;
+        nodes.push(node);
+    });
+    return nodes;
+}"""
+
+
 @app.post("/snapshot")
 async def snapshot():
     if state.page is None:
         return err("No page open.")
-    tree = await state.page.accessibility.snapshot()
-    if not tree:
+    raw_nodes: list[dict] = await state.page.evaluate(_AX_SNAPSHOT_JS)
+    if not raw_nodes:
         return ok({"text": "", "refs": {}})
+    tree = {"role": "root", "name": "", "children": raw_nodes}
     lines, ref_map = walk_tree(tree)
     state.refs = ref_map
     text = format_snapshot(lines)
